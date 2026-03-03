@@ -4,6 +4,7 @@ const STORAGE_KEYS = {
   HISTORY: "sudoku_history_v1",
   USER_SETTINGS: "sudoku_user_settings_v1",
   THEME: "sudoku_theme_v1" // legacy migration key
+  THEME: "sudoku_theme_v1"
 };
 
 const puzzles = {
@@ -168,6 +169,8 @@ function setMessage(el, text, type = "") {
 function hashPassword(password) {
   return btoa(unescape(encodeURIComponent(password))).split("").reverse().join("");
 }
+function setMessage(el, text, type = "") { el.textContent = text; el.className = `message ${type}`.trim(); }
+function hashPassword(password) { return btoa(unescape(encodeURIComponent(password))).split("").reverse().join(""); }
 
 function registerUser() {
   const username = dom.username.value.trim();
@@ -183,6 +186,8 @@ function registerUser() {
   settings[username] = defaultUserSettings();
   saveJSON(STORAGE_KEYS.USER_SETTINGS, settings);
 
+  users[username] = { password: hashPassword(password), createdAt: Date.now() };
+  saveJSON(STORAGE_KEYS.USERS, users);
   setMessage(dom.authMessage, "注册成功，请点击登录。", "success");
 }
 
@@ -212,6 +217,7 @@ function enterGame() {
   dom.gameSection.classList.remove("hidden");
   dom.welcomeText.textContent = `欢迎你，${state.user}`;
   applyUserSettings(state.user);
+  applyTheme(localStorage.getItem(STORAGE_KEYS.THEME) || "classic");
   refreshHistory();
   startNewGame();
 }
@@ -226,6 +232,10 @@ function solveBoard(board) {
     for (let r = br; r < br + 3; r++) {
       for (let c = bc; c < bc + 3; c++) if (b[r * 9 + c] === val) return false;
     }
+    const row = Math.floor(idx / 9), col = idx % 9;
+    for (let i = 0; i < 9; i++) if (b[row * 9 + i] === val || b[i * 9 + col] === val) return false;
+    const br = Math.floor(row / 3) * 3, bc = Math.floor(col / 3) * 3;
+    for (let r = br; r < br + 3; r++) for (let c = bc; c < bc + 3; c++) if (b[r * 9 + c] === val) return false;
     return true;
   }
   function dfs() {
@@ -237,6 +247,7 @@ function solveBoard(board) {
         if (dfs()) return true;
         board[idx] = 0;
       }
+      if (valid(board, idx, val)) { board[idx] = val; if (dfs()) return true; board[idx] = 0; }
     }
     return false;
   }
@@ -252,6 +263,7 @@ function startNewGame() {
   const selectedDifficulty = dom.difficultySelect.value;
   state.difficulty = selectedDifficulty;
   const { puzzle, solution } = getPuzzleBoard(selectedDifficulty);
+  const { puzzle, solution } = getPuzzleBoard(dom.difficultySelect.value);
   Object.assign(state, {
     board: puzzle.slice(),
     initialBoard: puzzle.slice(),
@@ -259,6 +271,7 @@ function startNewGame() {
     notes: Array.from({ length: 81 }, () => new Set()),
     selectedCell: null,
     activeNumber: null,
+    difficulty: dom.difficultySelect.value,
     timer: 0,
     mistakes: 0,
     score: 0,
@@ -292,6 +305,9 @@ function stopTimer() {
 function formatTime(seconds) {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
+function startTimer() { stopTimer(); state.timerId = setInterval(() => { state.timer += 1; updateStatus(); }, 1000); }
+function stopTimer() { if (state.timerId) clearInterval(state.timerId); state.timerId = null; }
+function formatTime(s) { return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; }
 
 function updateStatus() {
   dom.timer.textContent = formatTime(state.timer);
@@ -341,6 +357,7 @@ function renderBoard() {
 function renderKeypad() {
   dom.keypad.innerHTML = "";
   [1, 2, 3, 4, 5, 6, 7, 8, 9, "清空"].forEach((item) => {
+  [1,2,3,4,5,6,7,8,9,"清空"].forEach((item) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = String(item);
@@ -382,6 +399,7 @@ function onInput(value) {
     state.notes[idx].clear();
     state.feedbackCell = idx;
     state.feedbackType = "ok";
+    state.feedbackCell = idx; state.feedbackType = "ok";
     setMessage(dom.gameMessage, "已清空该格。", "success");
     refreshAfterInput();
     return;
@@ -404,12 +422,15 @@ function onInput(value) {
     }
     state.feedbackCell = idx;
     state.feedbackType = "ok";
+    if (fresh) state.score += ({ easy: 15, medium: 22, hard: 30 }[state.difficulty] || 20) + Math.max(0, 20 - Math.floor(state.timer / 30));
+    state.feedbackCell = idx; state.feedbackType = "ok";
     setMessage(dom.gameMessage, `✅ 正确，填入 ${value}。`, "success");
   } else {
     state.mistakes += 1;
     state.score -= 20;
     state.feedbackCell = idx;
     state.feedbackType = "bad";
+    state.feedbackCell = idx; state.feedbackType = "bad";
     setMessage(dom.gameMessage, `❌ 错误，${value} 不符合当前位置规则。`, "error");
     if (state.mistakes >= 3) return endGame(false);
   }
@@ -425,6 +446,7 @@ function refreshAfterInput() {
     state.feedbackType = null;
     renderBoard();
   }, 280);
+  setTimeout(() => { state.feedbackCell = null; state.feedbackType = null; renderBoard(); }, 280);
   checkWin();
 }
 
@@ -438,6 +460,7 @@ function useHint() {
   state.score -= 40;
   state.feedbackCell = pick;
   state.feedbackType = "ok";
+  state.feedbackCell = pick; state.feedbackType = "ok";
   setMessage(dom.gameMessage, `提示已填入 ${state.solution[pick]}（扣 40 分）。`, "error");
   refreshAfterInput();
 }
@@ -445,6 +468,7 @@ function useHint() {
 function checkWin() {
   if (state.board.every((v, i) => v === state.solution[i])) endGame(true);
 }
+function checkWin() { if (state.board.every((v, i) => v === state.solution[i])) endGame(true); }
 
 function endGame(success) {
   state.status = "finished";
@@ -470,6 +494,7 @@ function saveResult() {
     mistakes: state.mistakes,
     score: Math.max(0, Math.round(state.score))
   });
+  history[state.user].unshift({ time: new Date().toLocaleString("zh-CN"), difficulty: state.difficulty, duration: formatTime(state.timer), mistakes: state.mistakes, score: Math.max(0, Math.round(state.score)) });
   history[state.user] = history[state.user].slice(0, 30);
   saveJSON(STORAGE_KEYS.HISTORY, history);
 }
@@ -494,6 +519,7 @@ function isRelated(a, b) {
   const colA = a % 9;
   const rowB = Math.floor(b / 9);
   const colB = b % 9;
+  const rowA = Math.floor(a / 9), colA = a % 9, rowB = Math.floor(b / 9), colB = b % 9;
   return rowA === rowB || colA === colB || (Math.floor(rowA / 3) === Math.floor(rowB / 3) && Math.floor(colA / 3) === Math.floor(colB / 3));
 }
 
@@ -506,6 +532,7 @@ function findConflicts() {
         conflicts.add(i);
         conflicts.add(j);
       }
+      if (state.board[i] === state.board[j] && isRelated(i, j)) { conflicts.add(i); conflicts.add(j); }
     }
   }
   return conflicts;
@@ -529,6 +556,10 @@ function applyTheme(theme, shouldPersist = true) {
   document.body.dataset.theme = theme === "classic" ? "" : theme;
   dom.themeSelect.value = theme;
   if (shouldPersist) saveUserSettings(state.user);
+function applyTheme(theme) {
+  document.body.dataset.theme = theme === "classic" ? "" : theme;
+  dom.themeSelect.value = theme;
+  localStorage.setItem(STORAGE_KEYS.THEME, theme);
 }
 
 function updateModeHint() {
@@ -571,6 +602,10 @@ function initEvents() {
 
   dom.markerItems.addEventListener("click", (event) => {
     const btn = event.target.closest("button[data-marker]");
+  dom.themeSelect.addEventListener("change", () => applyTheme(dom.themeSelect.value));
+
+  dom.markerItems.addEventListener("click", (e) => {
+    const btn = e.target.closest("button[data-marker]");
     if (!btn) return;
     const marker = btn.dataset.marker;
     state.markers[marker] = !state.markers[marker];
@@ -589,6 +624,8 @@ function boot() {
   const fallbackTheme = localStorage.getItem(STORAGE_KEYS.THEME) || "classic";
   applyTheme(fallbackTheme, false);
 
+  const savedTheme = localStorage.getItem(STORAGE_KEYS.THEME) || "classic";
+  applyTheme(savedTheme);
   const remembered = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
   if (remembered && loadJSON(STORAGE_KEYS.USERS, {})[remembered]) {
     state.user = remembered;
