@@ -1,0 +1,112 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Sudoku Pro - 全能数独平台</title>
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <main class="app-shell">
+    <section class="card auth-card" id="authSection">
+      <h1>Sudoku Pro</h1>
+      <p>登录后可保存得分、历史战绩和个性化设置。</p>
+      <form id="authForm" class="auth-form">
+        <label>用户名
+          <input id="username" type="text" minlength="3" required placeholder="例如：alice">
+        </label>
+        <label>密码
+          <input id="password" type="password" minlength="4" required placeholder="至少 4 位">
+        </label>
+        <div class="auth-actions">
+          <button type="submit">登录</button>
+          <button type="button" id="registerBtn">注册</button>
+        </div>
+      </form>
+      <p class="hint">本地离线账号系统：数据保存在当前浏览器。</p>
+      <p id="authMessage" class="message"></p>
+    </section>
+
+    <section class="card game-card hidden" id="gameSection">
+      <header class="top-bar">
+        <div>
+          <h2 id="welcomeText"></h2>
+          <p class="sub">支持配色定制、笔记、提示、快捷填数与个人战绩。</p>
+        </div>
+        <button id="logoutBtn" class="ghost">退出登录</button>
+      </header>
+
+      <section class="panel game-controls">
+        <label>难度
+          <select id="difficultySelect">
+            <option value="easy">简单</option>
+            <option value="medium">中等</option>
+            <option value="hard">困难</option>
+          </select>
+        </label>
+        <label>主题配色
+          <select id="themeSelect">
+            <option value="classic">经典蓝</option>
+            <option value="high-contrast">高对比黑金</option>
+            <option value="mint">薄荷绿</option>
+            <option value="sunset">日落暖橙</option>
+          </select>
+        </label>
+        <label>输入模式
+          <select id="inputModeSelect">
+            <option value="cell-first">先选格再填数</option>
+            <option value="number-first">先选数字连填</option>
+          </select>
+        </label>
+        <button id="newGameBtn">开始新局</button>
+        <button id="notesToggleBtn" class="ghost">笔记模式：关</button>
+        <button id="hintBtn" class="ghost">提示（-40 分）</button>
+      </section>
+
+      <section class="panel tips">
+        <strong>操作说明：</strong>
+        <span id="modeHint">当前是“先选格再填数”：点击格子后，再点数字键盘或键盘 1-9 输入。</span>
+      </section>
+
+      <section class="panel status-grid">
+        <div>时间：<strong id="timer">00:00</strong></div>
+        <div>错误：<strong id="mistakes">0</strong>/3</div>
+        <div>得分：<strong id="score">0</strong></div>
+        <div>进度：<strong id="progress">0/81</strong></div>
+      </section>
+
+      <section class="board-wrap">
+        <div id="sudokuBoard" class="sudoku-board" aria-label="数独棋盘"></div>
+      </section>
+
+      <section class="panel keypad" id="keypad"></section>
+
+      <section class="panel markers">
+        <h3>数据标识（可点击开启/关闭）</h3>
+        <div class="marker-items" id="markerItems">
+          <button class="tag fixed active" data-marker="fixed" type="button">固定数字</button>
+          <button class="tag user active" data-marker="user" type="button">用户填写</button>
+          <button class="tag note active" data-marker="note" type="button">候选笔记</button>
+          <button class="tag conflict active" data-marker="conflict" type="button">冲突高亮</button>
+          <button class="tag selected active" data-marker="selected" type="button">当前选中/同组</button>
+          <button class="tag same active" data-marker="same" type="button">同数字高亮</button>
+        </div>
+        <p id="markerDescription" class="sub">点击标签可切换显示效果，帮助你专注当前信息。</p>
+      </section>
+
+      <section class="panel history">
+        <h3>个人得分记录</h3>
+        <table>
+          <thead>
+            <tr><th>时间</th><th>难度</th><th>时长</th><th>错误</th><th>得分</th></tr>
+          </thead>
+          <tbody id="historyTableBody"></tbody>
+        </table>
+      </section>
+      <p id="gameMessage" class="message"></p>
+    </section>
+  </main>
+
+  <script src="app.js"></script>
+</body>
+</html>
