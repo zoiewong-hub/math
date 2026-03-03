@@ -88,6 +88,11 @@ th, td { border-bottom: 1px solid #ebeff8; text-align: left; padding: 8px; }
   z-index: 100;
 }
 
+/* Ensure utility hidden class can hide modal overlays too. */
+.modal.hidden {
+  display: none;
+}
+
 .modal-content {
   width: min(92vw, 420px);
   background: var(--card);
