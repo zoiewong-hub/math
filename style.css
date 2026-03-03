@@ -61,6 +61,8 @@ button.ghost { background: color-mix(in srgb, var(--accent) 15%, var(--card)); c
 .cell:nth-child(n + 19):nth-child(-n + 27), .cell:nth-child(n + 46):nth-child(-n + 54) { border-bottom: 2px solid var(--text); }
 .keypad { display: grid; grid-template-columns: repeat(5, minmax(60px, 1fr)); gap: 10px; }
 .keypad button.active-number { outline: 3px solid color-mix(in srgb, var(--accent) 40%, white); }
+.keypad button { min-height: 44px; }
+.message.error { color: var(--danger); background: color-mix(in srgb, var(--danger) 12%, transparent); border-radius: 8px; padding: 4px 8px; }
 .marker-items { display: flex; flex-wrap: wrap; gap: 10px; }
 .tag { border-radius: 999px; padding: 6px 10px; font-size: 13px; border: 1px solid transparent; }
 .tag.fixed { background: var(--fixed-bg); }
@@ -73,7 +75,25 @@ button.ghost { background: color-mix(in srgb, var(--accent) 15%, var(--card)); c
 .tag.active { border-color: var(--text); }
 table { width: 100%; border-collapse: collapse; font-size: 14px; }
 th, td { border-bottom: 1px solid #ebeff8; text-align: left; padding: 8px; }
-.message { min-height: 22px; font-weight: 600; }
-.message.error { color: var(--danger); }
+.message { min-height: 22px; font-weight: 700; }
 .message.success { color: var(--ok); }
+
+.modal {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.45);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 100;
+}
+
+.modal-content {
+  width: min(92vw, 420px);
+  background: var(--card);
+  color: var(--text);
+  border-radius: 12px;
+  padding: 18px;
+  box-shadow: 0 16px 40px rgba(0, 0, 0, 0.28);
+}
 @media (max-width: 680px) { .status-grid { grid-template-columns: repeat(2, minmax(100px, 1fr)); } }

@@ -4,7 +4,6 @@ const STORAGE_KEYS = {
   HISTORY: "sudoku_history_v1",
   USER_SETTINGS: "sudoku_user_settings_v1",
   THEME: "sudoku_theme_v1" // legacy migration key
-  THEME: "sudoku_theme_v1"
 };
 
 const puzzles = {
@@ -50,6 +49,9 @@ const state = {
   status: "idle",
   feedbackCell: null,
   feedbackType: null,
+  streakMode: false,
+  longPressTimer: null,
+  activeHighlightNumber: null,
   markers: {
     fixed: true, user: true, note: true, conflict: true, selected: true, same: true
   }
@@ -81,7 +83,14 @@ const dom = {
   markerItems: document.getElementById("markerItems"),
   markerDescription: document.getElementById("markerDescription"),
   historyTableBody: document.getElementById("historyTableBody"),
-  gameMessage: document.getElementById("gameMessage")
+  gameMessage: document.getElementById("gameMessage"),
+  streakPanel: document.getElementById("streakPanel"),
+  streakText: document.getElementById("streakText"),
+  exitStreakBtn: document.getElementById("exitStreakBtn"),
+  gameOverModal: document.getElementById("gameOverModal"),
+  gameOverText: document.getElementById("gameOverText"),
+  restartGameBtn: document.getElementById("restartGameBtn"),
+  closeModalBtn: document.getElementById("closeModalBtn")
 };
 
 const loadJSON = (k, d) => JSON.parse(localStorage.getItem(k) || JSON.stringify(d));
@@ -169,8 +178,6 @@ function setMessage(el, text, type = "") {
 function hashPassword(password) {
   return btoa(unescape(encodeURIComponent(password))).split("").reverse().join("");
 }
-function setMessage(el, text, type = "") { el.textContent = text; el.className = `message ${type}`.trim(); }
-function hashPassword(password) { return btoa(unescape(encodeURIComponent(password))).split("").reverse().join(""); }
 
 function registerUser() {
   const username = dom.username.value.trim();
@@ -186,8 +193,6 @@ function registerUser() {
   settings[username] = defaultUserSettings();
   saveJSON(STORAGE_KEYS.USER_SETTINGS, settings);
 
-  users[username] = { password: hashPassword(password), createdAt: Date.now() };
-  saveJSON(STORAGE_KEYS.USERS, users);
   setMessage(dom.authMessage, "注册成功，请点击登录。", "success");
 }
 
@@ -217,7 +222,6 @@ function enterGame() {
   dom.gameSection.classList.remove("hidden");
   dom.welcomeText.textContent = `欢迎你，${state.user}`;
   applyUserSettings(state.user);
-  applyTheme(localStorage.getItem(STORAGE_KEYS.THEME) || "classic");
   refreshHistory();
   startNewGame();
 }
@@ -232,10 +236,6 @@ function solveBoard(board) {
     for (let r = br; r < br + 3; r++) {
       for (let c = bc; c < bc + 3; c++) if (b[r * 9 + c] === val) return false;
     }
-    const row = Math.floor(idx / 9), col = idx % 9;
-    for (let i = 0; i < 9; i++) if (b[row * 9 + i] === val || b[i * 9 + col] === val) return false;
-    const br = Math.floor(row / 3) * 3, bc = Math.floor(col / 3) * 3;
-    for (let r = br; r < br + 3; r++) for (let c = bc; c < bc + 3; c++) if (b[r * 9 + c] === val) return false;
     return true;
   }
   function dfs() {
@@ -247,7 +247,6 @@ function solveBoard(board) {
         if (dfs()) return true;
         board[idx] = 0;
       }
-      if (valid(board, idx, val)) { board[idx] = val; if (dfs()) return true; board[idx] = 0; }
     }
     return false;
   }
@@ -263,7 +262,6 @@ function startNewGame() {
   const selectedDifficulty = dom.difficultySelect.value;
   state.difficulty = selectedDifficulty;
   const { puzzle, solution } = getPuzzleBoard(selectedDifficulty);
-  const { puzzle, solution } = getPuzzleBoard(dom.difficultySelect.value);
   Object.assign(state, {
     board: puzzle.slice(),
     initialBoard: puzzle.slice(),
@@ -271,17 +269,19 @@ function startNewGame() {
     notes: Array.from({ length: 81 }, () => new Set()),
     selectedCell: null,
     activeNumber: null,
-    difficulty: dom.difficultySelect.value,
     timer: 0,
     mistakes: 0,
     score: 0,
     hintsUsed: 0,
     status: "playing",
     feedbackCell: null,
-    feedbackType: null
+    feedbackType: null,
+    streakMode: false,
+    activeHighlightNumber: null
   });
   saveUserSettings(state.user);
   setMessage(dom.gameMessage, "新局开始：请先选择输入模式。", "success");
+  updateStreakPanel();
   renderKeypad();
   renderBoard();
   updateStatus();
@@ -305,9 +305,6 @@ function stopTimer() {
 function formatTime(seconds) {
   return `${String(Math.floor(seconds / 60)).padStart(2, "0")}:${String(seconds % 60).padStart(2, "0")}`;
 }
-function startTimer() { stopTimer(); state.timerId = setInterval(() => { state.timer += 1; updateStatus(); }, 1000); }
-function stopTimer() { if (state.timerId) clearInterval(state.timerId); state.timerId = null; }
-function formatTime(s) { return `${String(Math.floor(s / 60)).padStart(2, "0")}:${String(s % 60).padStart(2, "0")}`; }
 
 function updateStatus() {
   dom.timer.textContent = formatTime(state.timer);
@@ -320,6 +317,7 @@ function renderBoard() {
   dom.sudokuBoard.innerHTML = "";
   const conflicts = state.markers.conflict ? findConflicts() : new Set();
   const selectedNumber = state.selectedCell !== null ? state.board[state.selectedCell] : null;
+  const highlightNumber = state.activeHighlightNumber || selectedNumber;
 
   for (let i = 0; i < 81; i++) {
     const cell = document.createElement("button");
@@ -332,7 +330,7 @@ function renderBoard() {
     if (!isFixed && value && state.markers.user) cell.classList.add("user");
     if (state.selectedCell === i && state.markers.selected) cell.classList.add("selected");
     if (state.selectedCell !== null && i !== state.selectedCell && isRelated(state.selectedCell, i) && state.markers.selected) cell.classList.add("related");
-    if (state.markers.same && selectedNumber && value && value === selectedNumber) cell.classList.add("same-number");
+    if (state.markers.same && highlightNumber && value && value === highlightNumber) cell.classList.add("same-number");
     if (conflicts.has(i)) cell.classList.add("conflict");
     if (state.feedbackCell === i && state.feedbackType) cell.classList.add(state.feedbackType === "ok" ? "feedback-correct" : "feedback-wrong");
 
@@ -357,19 +355,20 @@ function renderBoard() {
 function renderKeypad() {
   dom.keypad.innerHTML = "";
   [1, 2, 3, 4, 5, 6, 7, 8, 9, "清空"].forEach((item) => {
-  [1,2,3,4,5,6,7,8,9,"清空"].forEach((item) => {
     const btn = document.createElement("button");
     btn.type = "button";
     btn.textContent = String(item);
     if (item === "清空") btn.classList.add("ghost");
     if (state.activeNumber === item) btn.classList.add("active-number");
     btn.addEventListener("click", () => onKeypadClick(item));
+    bindKeypadLongPress(btn, item);
     dom.keypad.appendChild(btn);
   });
 }
 
 function onCellClick(index) {
   state.selectedCell = index;
+  state.activeHighlightNumber = state.board[index] || null;
   if (state.inputMode === "number-first" && state.activeNumber !== null) {
     onInput(state.activeNumber === "清空" ? 0 : state.activeNumber);
     return;
@@ -379,9 +378,11 @@ function onCellClick(index) {
 
 function onKeypadClick(item) {
   const value = item === "清空" ? 0 : item;
-  if (state.inputMode === "number-first") {
+  if (state.streakMode || state.inputMode === "number-first") {
     state.activeNumber = item;
+    state.activeHighlightNumber = typeof item === "number" ? item : null;
     renderKeypad();
+    updateStreakPanel();
     if (state.selectedCell !== null) onInput(value);
     setMessage(dom.gameMessage, item === "清空" ? "已选择清空工具，点击格子可清除。" : `已选择数字 ${item}，可连续点击空格快速填入。`, "success");
     return;
@@ -391,7 +392,11 @@ function onKeypadClick(item) {
 
 function onInput(value) {
   const idx = state.selectedCell;
-  if (idx === null || state.status !== "playing") return;
+  if (state.status !== "playing") return;
+  if (idx === null) {
+    setMessage(dom.gameMessage, "请先点选一个空格，再输入数字，避免误触。", "error");
+    return;
+  }
   if (state.initialBoard[idx] !== 0) return setMessage(dom.gameMessage, "该格是题目给定数字，不能修改。", "error");
 
   if (value === 0) {
@@ -399,7 +404,6 @@ function onInput(value) {
     state.notes[idx].clear();
     state.feedbackCell = idx;
     state.feedbackType = "ok";
-    state.feedbackCell = idx; state.feedbackType = "ok";
     setMessage(dom.gameMessage, "已清空该格。", "success");
     refreshAfterInput();
     return;
@@ -422,16 +426,13 @@ function onInput(value) {
     }
     state.feedbackCell = idx;
     state.feedbackType = "ok";
-    if (fresh) state.score += ({ easy: 15, medium: 22, hard: 30 }[state.difficulty] || 20) + Math.max(0, 20 - Math.floor(state.timer / 30));
-    state.feedbackCell = idx; state.feedbackType = "ok";
     setMessage(dom.gameMessage, `✅ 正确，填入 ${value}。`, "success");
   } else {
     state.mistakes += 1;
     state.score -= 20;
     state.feedbackCell = idx;
     state.feedbackType = "bad";
-    state.feedbackCell = idx; state.feedbackType = "bad";
-    setMessage(dom.gameMessage, `❌ 错误，${value} 不符合当前位置规则。`, "error");
+    setMessage(dom.gameMessage, `❌ 错误，${value} 不符合当前位置规则。还可再错 ${Math.max(0, 3 - state.mistakes)} 次。`, "error");
     if (state.mistakes >= 3) return endGame(false);
   }
 
@@ -446,7 +447,6 @@ function refreshAfterInput() {
     state.feedbackType = null;
     renderBoard();
   }, 280);
-  setTimeout(() => { state.feedbackCell = null; state.feedbackType = null; renderBoard(); }, 280);
   checkWin();
 }
 
@@ -460,7 +460,6 @@ function useHint() {
   state.score -= 40;
   state.feedbackCell = pick;
   state.feedbackType = "ok";
-  state.feedbackCell = pick; state.feedbackType = "ok";
   setMessage(dom.gameMessage, `提示已填入 ${state.solution[pick]}（扣 40 分）。`, "error");
   refreshAfterInput();
 }
@@ -468,7 +467,6 @@ function useHint() {
 function checkWin() {
   if (state.board.every((v, i) => v === state.solution[i])) endGame(true);
 }
-function checkWin() { if (state.board.every((v, i) => v === state.solution[i])) endGame(true); }
 
 function endGame(success) {
   state.status = "finished";
@@ -480,6 +478,7 @@ function endGame(success) {
     refreshHistory();
   } else {
     setMessage(dom.gameMessage, "失败：错误次数达到 3 次。", "error");
+    showGameOverModal();
   }
   updateStatus();
 }
@@ -494,7 +493,6 @@ function saveResult() {
     mistakes: state.mistakes,
     score: Math.max(0, Math.round(state.score))
   });
-  history[state.user].unshift({ time: new Date().toLocaleString("zh-CN"), difficulty: state.difficulty, duration: formatTime(state.timer), mistakes: state.mistakes, score: Math.max(0, Math.round(state.score)) });
   history[state.user] = history[state.user].slice(0, 30);
   saveJSON(STORAGE_KEYS.HISTORY, history);
 }
@@ -519,7 +517,6 @@ function isRelated(a, b) {
   const colA = a % 9;
   const rowB = Math.floor(b / 9);
   const colB = b % 9;
-  const rowA = Math.floor(a / 9), colA = a % 9, rowB = Math.floor(b / 9), colB = b % 9;
   return rowA === rowB || colA === colB || (Math.floor(rowA / 3) === Math.floor(rowB / 3) && Math.floor(colA / 3) === Math.floor(colB / 3));
 }
 
@@ -532,7 +529,6 @@ function findConflicts() {
         conflicts.add(i);
         conflicts.add(j);
       }
-      if (state.board[i] === state.board[j] && isRelated(i, j)) { conflicts.add(i); conflicts.add(j); }
     }
   }
   return conflicts;
@@ -543,6 +539,7 @@ function onKeyboardInput(event) {
   if (/^[1-9]$/.test(event.key)) {
     if (state.inputMode === "number-first") {
       state.activeNumber = Number(event.key);
+      state.activeHighlightNumber = Number(event.key);
       renderKeypad();
       setMessage(dom.gameMessage, `已选择数字 ${event.key}，请点击多个格子连填。`, "success");
       return;
@@ -552,14 +549,68 @@ function onKeyboardInput(event) {
   if (["Backspace", "Delete", "0"].includes(event.key)) onInput(0);
 }
 
+
+function showGameOverModal() {
+  dom.gameOverText.textContent = `错误次数已达到 3 次，本局结束。最终得分：${Math.max(0, Math.round(state.score))}`;
+  dom.gameOverModal.classList.remove("hidden");
+}
+
+function hideGameOverModal() {
+  dom.gameOverModal.classList.add("hidden");
+}
+
+function enterStreakMode(number) {
+  state.streakMode = true;
+  state.inputMode = "number-first";
+  dom.inputModeSelect.value = "number-first";
+  state.activeNumber = number;
+  state.activeHighlightNumber = typeof number === "number" ? number : null;
+  updateModeHint();
+  updateStreakPanel();
+  saveUserSettings(state.user);
+  renderKeypad();
+  renderBoard();
+  setMessage(dom.gameMessage, `已进入数字连填模式：${number}。连续点击格子可快速填写。`, "success");
+}
+
+function exitStreakMode() {
+  state.streakMode = false;
+  state.activeNumber = null;
+  state.activeHighlightNumber = null;
+  updateStreakPanel();
+  renderKeypad();
+  renderBoard();
+}
+
+function updateStreakPanel() {
+  if (!state.streakMode) {
+    dom.streakPanel.classList.add("hidden");
+    return;
+  }
+  dom.streakPanel.classList.remove("hidden");
+  dom.streakText.textContent = `当前数字：${state.activeNumber ?? "-"}`;
+}
+
+function bindKeypadLongPress(button, item) {
+  if (typeof item !== "number") return;
+  const start = () => {
+    clearTimeout(state.longPressTimer);
+    state.longPressTimer = setTimeout(() => enterStreakMode(item), 420);
+  };
+  const cancel = () => {
+    clearTimeout(state.longPressTimer);
+    state.longPressTimer = null;
+  };
+  button.addEventListener("pointerdown", start);
+  button.addEventListener("pointerup", cancel);
+  button.addEventListener("pointerleave", cancel);
+  button.addEventListener("pointercancel", cancel);
+}
+
 function applyTheme(theme, shouldPersist = true) {
   document.body.dataset.theme = theme === "classic" ? "" : theme;
   dom.themeSelect.value = theme;
   if (shouldPersist) saveUserSettings(state.user);
-function applyTheme(theme) {
-  document.body.dataset.theme = theme === "classic" ? "" : theme;
-  dom.themeSelect.value = theme;
-  localStorage.setItem(STORAGE_KEYS.THEME, theme);
 }
 
 function updateModeHint() {
@@ -575,6 +626,9 @@ function initEvents() {
   dom.logoutBtn.addEventListener("click", logoutUser);
   dom.newGameBtn.addEventListener("click", startNewGame);
   dom.hintBtn.addEventListener("click", useHint);
+  dom.exitStreakBtn.addEventListener("click", exitStreakMode);
+  dom.restartGameBtn.addEventListener("click", () => { hideGameOverModal(); startNewGame(); });
+  dom.closeModalBtn.addEventListener("click", hideGameOverModal);
 
   dom.notesToggleBtn.addEventListener("click", () => {
     state.notesMode = !state.notesMode;
@@ -585,7 +639,9 @@ function initEvents() {
 
   dom.inputModeSelect.addEventListener("change", () => {
     state.inputMode = dom.inputModeSelect.value;
+    state.streakMode = false;
     state.activeNumber = null;
+    state.activeHighlightNumber = null;
     saveUserSettings(state.user);
     renderKeypad();
     updateModeHint();
@@ -602,10 +658,6 @@ function initEvents() {
 
   dom.markerItems.addEventListener("click", (event) => {
     const btn = event.target.closest("button[data-marker]");
-  dom.themeSelect.addEventListener("change", () => applyTheme(dom.themeSelect.value));
-
-  dom.markerItems.addEventListener("click", (e) => {
-    const btn = e.target.closest("button[data-marker]");
     if (!btn) return;
     const marker = btn.dataset.marker;
     state.markers[marker] = !state.markers[marker];
@@ -624,8 +676,7 @@ function boot() {
   const fallbackTheme = localStorage.getItem(STORAGE_KEYS.THEME) || "classic";
   applyTheme(fallbackTheme, false);
 
-  const savedTheme = localStorage.getItem(STORAGE_KEYS.THEME) || "classic";
-  applyTheme(savedTheme);
+  hideGameOverModal();
   const remembered = localStorage.getItem(STORAGE_KEYS.CURRENT_USER);
   if (remembered && loadJSON(STORAGE_KEYS.USERS, {})[remembered]) {
     state.user = remembered;

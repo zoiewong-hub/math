@@ -66,6 +66,13 @@
       <section class="panel tips">
         <strong>操作说明：</strong>
         <span id="modeHint">当前是“先选格再填数”：点击格子后，再点数字键盘或键盘 1-9 输入。</span>
+        <p class="sub">防误触：数字键<strong>长按</strong>可进入“数字连填模式”；再次长按可快速切换目标数字。</p>
+      </section>
+
+      <section class="panel hidden" id="streakPanel">
+        <strong>数字连填模式已开启：</strong>
+        <span id="streakText">当前数字 -</span>
+        <button id="exitStreakBtn" class="ghost" type="button">退出连填</button>
       </section>
 
       <section class="panel status-grid">
@@ -106,6 +113,17 @@
       <p id="gameMessage" class="message"></p>
     </section>
   </main>
+
+  <div id="gameOverModal" class="modal hidden" role="dialog" aria-modal="true" aria-labelledby="gameOverTitle">
+    <div class="modal-content">
+      <h3 id="gameOverTitle">游戏结束</h3>
+      <p id="gameOverText">错误次数已达 3 次。</p>
+      <div class="auth-actions">
+        <button id="restartGameBtn" type="button">再来一局</button>
+        <button id="closeModalBtn" class="ghost" type="button">关闭</button>
+      </div>
+    </div>
+  </div>
 
   <script src="app.js"></script>
 </body>
